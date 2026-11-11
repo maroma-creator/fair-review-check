@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fair Review Check</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: inputs on the left, a live fairness verdict on the right; stacks on phones. */
+:root {
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --surface-2: #eaeff9;
+  --fg: #0f1b3d;
+  --muted: #55607e;
+  --line: #d3dbee;
+  --accent: #1428a0;
+  --accent-fg: #ffffff;
+  --warn: #b45f06;
+  --warn-bg: #fdf0dc;
+  --crit: #b3261e;
+  --crit-bg: #fbe5e3;
+  --ok: #1f7a4d;
+  --ok-bg: #e0f3e8;
+  --bar-hi: #f5a623;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1226; --surface: #121c3a; --surface-2: #1a2750; --fg: #eaf0ff; --muted: #a2aed0; --line: #2b3a6b;
+    --accent: #7f93ff; --accent-fg: #0b1226; --warn: #f3b562; --warn-bg: #3a2a10; --crit: #ff9d94; --crit-bg: #3d1a18;
+    --ok: #7fd6a4; --ok-bg: #12352436; --bar-hi: #f5a623; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1226; --surface: #121c3a; --surface-2: #1a2750; --fg: #eaf0ff; --muted: #a2aed0; --line: #2b3a6b;
+  --accent: #7f93ff; --accent-fg: #0b1226; --warn: #f3b562; --warn-bg: #3a2a10; --crit: #ff9d94; --crit-bg: #3d1a18;
+  --ok: #7fd6a4; --ok-bg: #12352436; --bar-hi: #f5a623; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+h1 { font-size: 30px; line-height: 1.15; }
+h2 { font-size: 18px; }
+.lede { color: var(--muted); max-width: 62ch; margin: 6px 0 0; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.presets .label { color: var(--muted); font-size: 13px; margin-right: 4px; }
+button {
+  font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--fg); padding: 8px 14px; font-weight: 500;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.app { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 24px; align-items: start; }
+@media (max-width: 860px) { .app { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.result { position: sticky; top: 16px; }
+@media (max-width: 860px) { .result { position: static; } }
+fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+legend { padding: 0; margin-bottom: 10px; font-family: var(--font-display); font-weight: 700; font-size: 16px; }
+.hint { color: var(--muted); font-size: 13px; margin: -6px 0 0; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label, .field .lab { font-size: 13px; font-weight: 600; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.val { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 3.2ch; text-align: right; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+input[type="number"], select, input[type="text"], textarea {
+  font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; width: 100%;
+}
+.goal { display: flex; flex-direction: column; gap: 2px; }
+.goal .gname { font-size: 14px; }
+.months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.months .field label { font-weight: 500; color: var(--muted); font-size: 12px; }
+.months input { padding: 6px 6px; text-align: center; font-variant-numeric: tabular-nums; }
+.toggle { display: flex; gap: 10px; align-items: flex-start; }
+.toggle input { margin-top: 4px; width: 18px; height: 18px; accent-color: var(--accent); }
+.toggle label { font-weight: 500; }
+.scorehead { display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: center; justify-content: space-between; }
+.score { font-family: var(--font-display); font-size: 56px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.score small { font-size: 18px; color: var(--muted); font-weight: 500; }
+.pill { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--surface-2); color: var(--fg); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+.pill.crit { background: var(--crit-bg); color: var(--crit); }
+.pill.ok { background: var(--ok-bg); color: var(--ok); }
+.bars { display: flex; flex-direction: column; gap: 10px; }
+.bar { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr) 3rem; gap: 10px; align-items: center; font-size: 13px; }
+.track { height: 10px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.fill { height: 100%; background: var(--accent); border-radius: 99px; }
+.bar .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.chartbox { overflow-x: auto; }
+svg.chart { width: 100%; min-width: 300px; height: auto; display: block; }
+.flags { display: flex; flex-direction: column; gap: 10px; list-style: none; padding: 0; margin: 0; }
+.flag { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: start; }
+.flag h3 { font-size: 15px; }
+.flag p { margin: 2px 0 0; color: var(--muted); font-size: 14px; grid-column: 2; }
+.flag.warn { background: var(--warn-bg); }
+.flag.crit { background: var(--crit-bg); }
+.flag.ok { background: var(--surface); }
+.copyrow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.copyrow .msg { color: var(--muted); font-size: 13px; }
+textarea.fallback { min-height: 120px; }
+.foot { color: var(--muted); font-size: 12.5px; }
+@media (prefers-reduced-motion: no-preference) { .fill { transition: width .25s ease; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">MAN221 companion demo | Samsung case</div>
+    <h1>Fair Review Check</h1>
+    <p class="lede">Score a hybrid or remote employee on results, collaboration and growth, then see whether proximity bias, recency bias or attendance tracking is bending the rating. The employee below is an example.</p>
+  </header>
+
+  <div class="presets" role="group" aria-label="Example reviews">
+    <span class="label">Load an example:</span>
+    <button type="button" id="p-biased">Biased review</button>
+    <button type="button" id="p-fair">Fair review</button>
+  </div>
+
+  <div class="app">
+    <form class="panel" id="form" onsubmit="return false" aria-label="Review inputs">
+      <fieldset>
+        <legend>Employee</legend>
+        <div class="field">
+          <label for="name">Name or label</label>
+          <input type="text" id="name" value="Sample employee (example)">
+        </div>
+        <div class="field">
+          <label for="mode">Work mode</label>
+          <select id="mode">
+            <option value="Remote">Remote</option>
+            <option value="Hybrid">Hybrid</option>
+            <option value="Office">Office</option>
+          </select>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>1. Results against goals (60%)</legend>
+        <p class="hint">Percent of each agreed goal delivered. Goals were set at the start of the year.</p>
+        <div class="goal">
+          <div class="row"><label class="gname" for="g0">Ship payment API v2</label><span class="val" id="g0v"></span></div>
+          <input type="range" id="g0" min="0" max="120" step="1" value="100">
+        </div>
+        <div class="goal">
+          <div class="row"><label class="gname" for="g1">Cut defect rate by 20%</label><span class="val" id="g1v"></span></div>
+          <input type="range" id="g1" min="0" max="120" step="1" value="90">
+        </div>
+        <div class="goal">
+          <div class="row"><label class="gname" for="g2">Raise documentation coverage</label><span class="val" id="g2v"></span></div>
+          <input type="range" id="g2" min="0" max="120" step="1" value="85">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>2. Collaboration and growth (25% and 15%)</legend>
+        <div class="goal">
+          <div class="row"><label class="gname" for="collab">Peer review of collaboration (1 to 5)</label><span class="val" id="collabv"></span></div>
+          <input type="range" id="collab" min="1" max="5" step="0.5" value="4">
+        </div>
+        <div class="goal">
+          <div class="row"><label class="gname" for="growth">Skills and growth (1 to 5)</label><span class="val" id="growthv"></span></div>
+          <input type="range" id="growth" min="1" max="5" step="0.5" value="4">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>3. Monthly output over the year</legend>
+        <p class="hint">Share of the monthly target met, from 0 to 100.</p>
+        <div class="months" id="months"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>4. What the manager sees</legend>
+        <div class="goal">
+          <div class="row"><label class="gname" for="imp">Manager's overall impression (1 to 5)</label><span class="val" id="impv"></span></div>
+          <input type="range" id="imp" min="1" max="5" step="0.5" value="3">
+        </div>
+        <div class="goal">
+          <div class="row"><label class="gname" for="days">Days seen in person per month</label><span class="val" id="daysv"></span></div>
+          <input type="range" id="days" min="0" max="22" step="1" value="3">
+        </div>
+        <div class="toggle">
+          <input type="checkbox" id="badge" checked>
+          <label for="badge">Badge swipes or hours online are used in the rating</label>
+        </div>
+      </fieldset>
+    </form>
+
+    <section class="panel result" aria-live="polite" aria-label="Review result">
+      <div class="scorehead">
+        <div>
+          <div class="eyebrow" id="who"></div>
+          <div class="score"><span id="score">0</span><small> / 100</small></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+          <span class="pill" id="grade"></span>
+          <span class="pill" id="status"></span>
+        </div>
+      </div>
+
+      <div class="bars" id="bars"></div>
+
+      <div>
+        <h2>Monthly output</h2>
+        <div class="chartbox"><svg class="chart" id="chart" viewBox="0 0 340 150" role="img" aria-label="Monthly output chart"></svg></div>
+      </div>
+
+      <div>
+        <h2>Fairness checks</h2>
+        <ul class="flags" id="flags" style="margin-top:10px"></ul>
+      </div>
+
+      <div class="copyrow">
+        <button type="button" class="primary" id="copy">Copy review summary</button>
+        <span class="msg" id="copymsg" role="status"></span>
+      </div>
+      <textarea class="fallback" id="fallback" hidden readonly aria-label="Review summary text"></textarea>
+
+      <p class="foot">Weights, grade bands and thresholds are illustrative, built from the concepts in the presentation. They are not Samsung's own formula.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  var MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var PRESETS = {
+    biased: { name: "Sample employee (example)", mode: "Remote", g: [100, 90, 85], collab: 4, growth: 4,
+      m: [82,85,88,84,90,92,89,91,87,80,66,62], imp: 3, days: 3, badge: true },
+    fair: { name: "Sample employee (example)", mode: "Hybrid", g: [100, 90, 85], collab: 4, growth: 4,
+      m: [84,85,88,86,90,91,89,90,88,87,86,88], imp: 4.5, days: 12, badge: false }
+  };
+  var $ = function (id) { return document.getElementById(id); };
+
+  // build month inputs
+  var mon = $("months");
+  MONTHS.forEach(function (m, i) {
+    var d = document.createElement("div");
+    d.className = "field";
+    d.innerHTML = '<label for="m' + i + '">' + m + '</label><input type="number" id="m' + i + '" min="0" max="100" step="1" value="0">';
+    mon.appendChild(d);
+  });
+
+  function num(id) { var v = parseFloat($(id).value); return isNaN(v) ? 0 : v; }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  function r1(v) { return Math.round(v * 10) / 10; }
+  function gradeFor(s) {
+    if (s >= 90) return "Exceeds expectations";
+    if (s >= 75) return "Strong";
+    if (s >= 60) return "Meets expectations";
+    if (s >= 45) return "Developing";
+    return "Below expectations";
+  }
+
+  function setPreset(p) {
+    $("name").value = p.name; $("mode").value = p.mode;
+    p.g.forEach(function (v, i) { $("g" + i).value = v; });
+    $("collab").value = p.collab; $("growth").value = p.growth;
+    p.m.forEach(function (v, i) { $("m" + i).value = v; });
+    $("imp").value = p.imp; $("days").value = p.days; $("badge").checked = p.badge;
+    render();
+  }
+
+  var lastSummary = "";
+
+  function render() {
+    var goals = [num("g0"), num("g1"), num("g2")];
+    var outcomes = clamp(goals.reduce(function (a, b) { return a + b; }, 0) / goals.length, 0, 100);
+    var collab = num("collab") / 5 * 100, growth = num("growth") / 5 * 100;
+    var total = outcomes * 0.6 + collab * 0.25 + growth * 0.15;
+    var monthly = MONTHS.map(function (_, i) { return clamp(num("m" + i), 0, 100); });
+    var yearAvg = monthly.reduce(function (a, b) { return a + b; }, 0) / 12;
+    var last3 = (monthly[9] + monthly[10] + monthly[11]) / 3;
+    var imp = num("imp") * 20, days = num("days"), mode = $("mode").value;
+
+    // value labels
+    ["g0","g1","g2"].forEach(function (id) { $(id + "v").textContent = $(id).value + "%"; });
+    $("collabv").textContent = $("collab").value; $("growthv").textContent = $("growth").value;
+    $("impv").textContent = $("imp").value; $("daysv").textContent = $("days").value;
+
+    $("who").textContent = ($("name").value || "Employee") + " | " + mode;
+    $("score").textContent = Math.round(total);
+    $("grade").textContent = gradeFor(total);
+
+    // breakdown bars
+    var parts = [["Results (60%)", outcomes], ["Collaboration (25%)", collab], ["Growth (15%)", growth]];
+    $("bars").innerHTML = parts.map(function (p) {
+      return '<div class="bar"><span>' + p[0] + '</span><div class="track"><div class="fill" style="width:' + clamp(p[1], 0, 100) + '%"></div></div><span class="num">' + Math.round(p[1]) + '</span></div>';
+    }).join("");
+
+    // chart, one scale: y 0..100 maps to 110..10
+    var X0 = 34, W = 296, bw = W / 12, svg = '';
+    function y(v) { return 110 - v * 1.0; }
+    [0, 50, 100].forEach(function (t) {
+      svg += '<line x1="' + X0 + '" x2="' + (X0 + W) + '" y1="' + y(t) + '" y2="' + y(t) + '" style="stroke:var(--line)" stroke-width="1"/>';
+      svg += '<text x="' + (X0 - 6) + '" y="' + (y(t) + 4) + '" text-anchor="end" font-size="10" style="fill:var(--muted)">' + t + '</text>';
+    });
+    monthly.forEach(function (v, i) {
+      var hi = i >= 9;
+      var h = v * 1.0, x = X0 + i * bw + 3;
+      svg += '<rect x="' + x + '" y="' + (110 - h) + '" width="' + (bw - 6) + '" height="' + h + '" rx="2" style="fill:' + (hi ? 'var(--bar-hi)' : 'var(--accent)') + '"/>';
+      svg += '<text x="' + (x + (bw - 6) / 2) + '" y="126" text-anchor="middle" font-size="10" style="fill:var(--muted)">' + MONTHS[i].charAt(0) + '</text>';
+    });
+    svg += '<line x1="' + X0 + '" x2="' + (X0 + W) + '" y1="' + y(yearAvg) + '" y2="' + y(yearAvg) + '" style="stroke:var(--fg)" stroke-width="1.2" stroke-dasharray="4 3"/>';
+    svg += '<text x="' + (X0 + W) + '" y="' + (y(yearAvg) - 4) + '" text-anchor="end" font-size="10" style="fill:var(--fg)">Year average ' + Math.round(yearAvg) + '</text>';
+    svg += '<text x="' + X0 + '" y="144" font-size="10" style="fill:var(--muted)">Amber bars: the last three months</text>';
+    $("chart").innerHTML = svg;
+
+    // fairness checks
+    var flags = [], issues = 0, crit = false;
+    var gap = imp - total;
+    if (Math.abs(gap) >= 10) {
+      issues++;
+      if (gap < 0) {
+        flags.push({ sev: "warn", t: "Manager's impression is " + Math.round(-gap) + " points below the evidence",
+          d: (mode !== "Office" && days < 8)
+            ? "Only " + days + " days a month in person. Low visibility may be pulling the rating down (proximity bias). Grade on the goal results."
+            : "Check that the impression reflects the goal results and not familiarity." });
+      } else {
+        flags.push({ sev: "warn", t: "Manager's impression is " + Math.round(gap) + " points above the evidence",
+          d: "Frequent contact can lift a rating (proximity bias). Ask for goal evidence before raising the grade." });
+      }
+    } else {
+      flags.push({ sev: "ok", t: "Impression matches the evidence", d: "The manager's view is within 10 points of the evidence score." });
+    }
+    var shift = last3 - yearAvg;
+    if (Math.abs(shift) >= 8) {
+      issues++;
+      flags.push({ sev: "warn", t: "Recent months differ from the year",
+        d: "The last three months average " + Math.round(last3) + " against " + Math.round(yearAvg) + " for the year (recency bias). Use the full year, or write down why the shift is real." });
+    } else {
+      flags.push({ sev: "ok", t: "No recency distortion", d: "The last three months are within 8 points of the yearly average." });
+    }
+    if ($("badge").checked) {
+      issues++; crit = true;
+      flags.push({ sev: "crit", t: "Attendance data is in the rating",
+        d: "Badge swipes and hours online measure presence, not results. Remove them from the score and keep them for scheduling only." });
+    } else {
+      flags.push({ sev: "ok", t: "Results-only rating", d: "No attendance or activity data is used." });
+    }
+    var labels = { warn: "Review", crit: "Fix", ok: "Clear" };
+    $("flags").innerHTML = flags.map(function (f) {
+      return '<li class="flag ' + f.sev + '"><span class="pill ' + f.sev + '">' + labels[f.sev] + '</span><h3>' + f.t + '</h3><p>' + f.d + '</p></li>';
+    }).join("");
+
+    var st = $("status");
+    st.className = "pill " + (issues === 0 ? "ok" : (crit ? "crit" : "warn"));
+    st.textContent = issues === 0 ? "All checks clear" : issues + (issues === 1 ? " check needs review" : " checks need review");
+
+    lastSummary = "Fair Review Check: " + ($("name").value || "Employee") + " (" + mode + ")\n" +
+      "Evidence score: " + Math.round(total) + "/100 (" + gradeFor(total) + ")\n" +
+      "Results " + Math.round(outcomes) + ", collaboration " + Math.round(collab) + ", growth " + Math.round(growth) + "\n" +
+      "Manager impression: " + Math.round(imp) + "/100 | Days in person per month: " + days + "\n" +
+      "Year average output: " + Math.round(yearAvg) + " | Last three months: " + Math.round(last3) + "\n" +
+      "Checks needing review: " + issues + "\n" +
+      flags.filter(function (f) { return f.sev !== "ok"; }).map(function (f) { return "- " + f.t; }).join("\n");
+  }
+
+  document.querySelectorAll("#form input, #form select").forEach(function (el) {
+    el.addEventListener("input", render); el.addEventListener("change", render);
+  });
+  $("p-biased").addEventListener("click", function () { setPreset(PRESETS.biased); });
+  $("p-fair").addEventListener("click", function () { setPreset(PRESETS.fair); });
+
+  $("copy").addEventListener("click", function () {
+    var msg = $("copymsg"), fb = $("fallback");
+    function showFallback() {
+      fb.hidden = false; fb.value = lastSummary; fb.focus(); fb.select();
+      msg.textContent = "Select and copy the text below.";
+    }
+    try {
+      navigator.clipboard.writeText(lastSummary).then(function () {
+        fb.hidden = true; msg.textContent = "Copied.";
+      }, showFallback);
+    } catch (e) { showFallback(); }
+  });
+
+  setPreset(PRESETS.biased);
+})();
+</script>
+
+</body>
+</html>
